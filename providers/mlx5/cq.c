@@ -1070,6 +1070,8 @@ static inline void _mlx5_end_poll(struct ibv_cq_ex *ibcq,
 	if (lock)
 		mlx5_spin_unlock(&cq->lock);
 
+	cq->cur_rsc = NULL;
+
 	if (stall) {
 		if (stall == POLLING_MODE_STALL_ADAPTIVE) {
 			if (!(cq->flags & MLX5_CQ_FLAGS_FOUND_CQES)) {
@@ -1821,6 +1823,14 @@ void __mlx5_cq_clean(struct mlx5_cq *cq, uint32_t rsn, struct mlx5_srq *srq)
 
 	if (!cq || cq->flags & MLX5_CQ_FLAGS_DV_OWNED)
 		return;
+
+	/*
+	 * Reset the cq->cur_rsc if it is associated with the QP to be
+	 * destroyed in order to prevent use-after-free errors in the
+	 * next ibv_next_poll().
+	 */
+	if (unlikely(cq->cur_rsc->rsn == rsn))
+		cq->cur_rsc = NULL;
 
 	/*
 	 * First we need to find the current producer index, so we
